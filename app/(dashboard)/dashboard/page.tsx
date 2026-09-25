@@ -1,19 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePosts } from '@/context/posts-context';
 import { useWorkspace } from '@/context/workspace-context';
+import { dashboardApi } from '@/lib/api/dashboard';
+import { analyticsService } from '@/services/analytics.service';
+import { adaptPostResponseToUi } from '@/lib/adapters';
+import { DEFAULT_WORKSPACE_ID } from '@/lib/config';
+import { DashboardSummaryResponse } from '@/types/api';
+import { Post } from '@/types/post';
+import { TimeSeriesPoint } from '@/types/analytics';
+import { parseApiError } from '@/lib/api/client';
 import { StatCard } from '@/components/common/StatCard';
-import { PageHeader } from '@/components/common/PageHeader';
 import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
 import { PostTable } from '@/components/posts/PostTable';
 import { PostDetailsModal } from '@/components/posts/PostDetailsModal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { AreaChart } from '@/components/charts/AreaChart';
-import { MOCK_TIMESERIES_30D } from '@/data/mock-analytics';
-import { Post } from '@/types/post';
 import { Button } from '@/components/ui/Button';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
+import { EmptyState } from '@/components/common/EmptyState';
 import {
   FileText,
   CheckCircle2,
@@ -29,27 +37,88 @@ import {
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { posts, stats, deletePost, duplicatePost, publishPost } = usePosts();
-  const { user, currentWorkspace, accounts, connectedCount } = useWorkspace();
+  const { deletePost, duplicatePost, publishPost } = usePosts();
+  const { user, currentWorkspace, accounts } = useWorkspace();
+
+  const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
+  const [timeseries, setTimeseries] = useState<TimeSeriesPoint[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
 
-  // Take recent 5 posts
-  const recentPosts = posts.slice(0, 5);
+  const workspaceId = Number(currentWorkspace.id) || DEFAULT_WORKSPACE_ID;
+
+  const loadDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [summaryData, tsData] = await Promise.all([
+        dashboardApi.getSummary(workspaceId),
+        analyticsService.getTimeSeries('30d', workspaceId),
+      ]);
+
+      setSummary(summaryData);
+      setTimeseries(tsData);
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      setError(errMsg);
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   const handleDeleteConfirm = async () => {
     if (postToDelete) {
       await deletePost(postToDelete);
       setPostToDelete(null);
+      await loadDashboardData();
     }
   };
+
+  const handleDuplicate = async (id: string) => {
+    await duplicatePost(id);
+    await loadDashboardData();
+  };
+
+  const handlePublish = async (id: string) => {
+    await publishPost(id);
+    await loadDashboardData();
+  };
+
+  if (loading && !summary) {
+    return (
+      <div className="space-y-6 sm:space-y-8 animate-in fade-in-50 duration-200">
+        <LoadingState type="full" />
+      </div>
+    );
+  }
+
+  if (error && !summary) {
+    return (
+      <div className="py-12">
+        <ErrorState
+          title="Unable to load dashboard"
+          message={error}
+          onRetry={loadDashboardData}
+        />
+      </div>
+    );
+  }
+
+  const recentPosts: Post[] = summary ? summary.recentPosts.map(adaptPostResponseToUi) : [];
+  const activeChannels = accounts.length > 0 ? accounts : [];
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in-50 duration-200">
       {/* Welcome Banner & Quick Actions */}
       <div className="bg-linear-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-md relative overflow-hidden">
-        {/* Subtle background glow */}
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -62,7 +131,8 @@ export default function DashboardPage() {
               Welcome back, {user.name} 👋
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Your omnichannel marketing channels are synced. You have {stats.scheduled} upcoming posts scheduled across Facebook, Instagram, TikTok, and YouTube.
+              Your omnichannel marketing channels are synced with the live API. You have{' '}
+              <strong className="text-white">{summary?.scheduledPosts || 0} upcoming posts</strong> scheduled across Facebook, Instagram, TikTok, and YouTube.
             </p>
           </div>
 
@@ -104,39 +174,39 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Primary KPI Stats Grid */}
+      {/* Primary KPI Stats Grid - Real API Values */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
         <StatCard
           title="Total Posts"
-          value={stats.total}
+          value={summary?.totalPosts ?? 0}
           icon={<FileText className="w-4 h-4 text-slate-600 dark:text-slate-300" />}
           change={{ value: 14.2, label: 'vs last mo' }}
         />
 
         <StatCard
           title="Published"
-          value={stats.published}
+          value={summary?.publishedPosts ?? 0}
           icon={<CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
           change={{ value: 8.5, label: 'on time' }}
         />
 
         <StatCard
           title="Scheduled"
-          value={stats.scheduled}
+          value={summary?.scheduledPosts ?? 0}
           icon={<Clock className="w-4 h-4 text-sky-600 dark:text-sky-400" />}
           description="In queue"
         />
 
         <StatCard
           title="Failed"
-          value={stats.failed}
+          value={summary?.failedPosts ?? 0}
           icon={<AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />}
           change={{ value: -3.1, isPositive: true, label: 'decreased' }}
         />
 
         <StatCard
           title="Connected Accounts"
-          value={`${connectedCount}/4`}
+          value={`${summary?.connectedAccounts ?? 0}/4`}
           icon={<Share2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
           description="Active channels"
         />
@@ -164,7 +234,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {accounts.map((acc) => (
+          {activeChannels.map((acc) => (
             <div
               key={acc.platform}
               className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 flex items-center justify-between"
@@ -212,7 +282,7 @@ export default function DashboardPage() {
                 <span>Audience Reach & Publishing Velocity</span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Aggregated daily reach across all 4 channels (Past 30 Days)
+                Aggregated daily reach across all 4 channels (Past 30 Days from live telemetry)
               </p>
             </div>
             <Link
@@ -225,7 +295,7 @@ export default function DashboardPage() {
           </div>
 
           <AreaChart
-            data={MOCK_TIMESERIES_30D}
+            data={timeseries}
             metricKey="reach"
             metricLabel="Total Reach"
             color="#2563eb"
@@ -241,43 +311,51 @@ export default function DashboardPage() {
             </h3>
             <p className="text-xs text-slate-400 mb-4">Upcoming and recent status</p>
 
-            <div className="space-y-3">
-              {recentPosts.slice(0, 4).map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => setSelectedPost(p)}
-                  className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer flex items-center justify-between gap-2"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                      {p.title}
-                    </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      {p.platforms.map((plat) => (
-                        <span key={plat} className="text-slate-500">
-                          <SocialPlatformIcon platform={plat} size={11} />
-                        </span>
-                      ))}
-                      <span className="text-[10px] text-slate-400 ml-1">
-                        • {p.status === 'scheduled' ? 'Scheduled' : 'Published'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                      p.status === 'published'
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                        : p.status === 'scheduled'
-                        ? 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
-                        : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                    }`}
+            {recentPosts.length === 0 ? (
+              <div className="p-4 text-center text-xs text-slate-400">
+                No recent posts in queue.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentPosts.slice(0, 4).map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedPost(p)}
+                    className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer flex items-center justify-between gap-2"
                   >
-                    {p.status}
-                  </span>
-                </div>
-              ))}
-            </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {p.title}
+                      </p>
+                      <div className="flex items-center gap-1 mt-1">
+                        {p.platforms.map((plat) => (
+                          <span key={plat} className="text-slate-500">
+                            <SocialPlatformIcon platform={plat} size={11} />
+                          </span>
+                        ))}
+                        <span className="text-[10px] text-slate-400 ml-1">
+                          • {p.status === 'scheduled' ? 'Scheduled' : p.status === 'published' ? 'Published' : p.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        p.status === 'published'
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                          : p.status === 'scheduled'
+                          ? 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
+                          : p.status === 'failed'
+                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                          : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                      }`}
+                    >
+                      {p.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -307,17 +385,32 @@ export default function DashboardPage() {
             href="/content"
             className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
           >
-            <span>View All ({stats.total})</span>
+            <span>View All ({summary?.totalPosts ?? 0})</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
 
-        <PostTable
-          posts={recentPosts}
-          onView={(p) => setSelectedPost(p)}
-          onDuplicate={(id) => duplicatePost(id)}
-          onDelete={(id) => setPostToDelete(id)}
-        />
+        {recentPosts.length === 0 ? (
+          <EmptyState
+            icon={<FileText className="w-7 h-7" />}
+            title="No posts created yet"
+            description="Create your first post to start publishing across social media channels."
+            action={{
+              label: 'Create New Post',
+              onClick: () => {
+                window.location.href = '/create';
+              },
+              icon: <PlusCircle className="w-4 h-4" />,
+            }}
+          />
+        ) : (
+          <PostTable
+            posts={recentPosts}
+            onView={(p) => setSelectedPost(p)}
+            onDuplicate={handleDuplicate}
+            onDelete={(id) => setPostToDelete(id)}
+          />
+        )}
       </div>
 
       {/* Post Details Modal */}
@@ -325,7 +418,7 @@ export default function DashboardPage() {
         post={selectedPost}
         isOpen={!!selectedPost}
         onClose={() => setSelectedPost(null)}
-        onPublishNow={(id) => publishPost(id)}
+        onPublishNow={handlePublish}
       />
 
       {/* Delete Confirmation Dialog */}

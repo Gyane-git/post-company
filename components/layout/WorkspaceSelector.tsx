@@ -1,12 +1,44 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useWorkspace } from '@/context/workspace-context';
 import { Check, ChevronsUpDown, Plus } from 'lucide-react';
 import { Dropdown } from '@/components/ui/Dropdown';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
 
 export function WorkspaceSelector() {
-  const { currentWorkspace, workspaces, switchWorkspace } = useWorkspace();
+  const { currentWorkspace, workspaces, switchWorkspace, createWorkspace } = useWorkspace();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newSlug, setNewSlug] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleNameChange = (val: string) => {
+    setNewName(val);
+    setNewSlug(val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await createWorkspace({
+        name: newName.trim(),
+        slug: newSlug.trim() || newName.trim().toLowerCase(),
+      });
+      setIsModalOpen(false);
+      setNewName('');
+      setNewSlug('');
+    } catch {
+      // toast shown in context
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="relative">
@@ -53,12 +85,55 @@ export function WorkspaceSelector() {
             id: 'new-ws',
             label: 'Create Workspace...',
             icon: <Plus className="w-4 h-4 text-slate-500" />,
-            onClick: () => {
-              alert('Workspaces management is ready for backend integration.');
-            },
+            onClick: () => setIsModalOpen(true),
           },
         ]}
       />
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Create New Workspace"
+        description="Organize distinct marketing brands, teams, or client portfolios."
+      >
+        <form onSubmit={handleCreate} className="space-y-4">
+          <Input
+            label="Workspace Name"
+            placeholder="e.g. Acme Studio"
+            value={newName}
+            onChange={(e) => handleNameChange(e.target.value)}
+            required
+            autoFocus
+          />
+          <Input
+            label="Workspace Slug"
+            placeholder="acme-studio"
+            value={newSlug}
+            onChange={(e) => setNewSlug(e.target.value)}
+            helperText="Identifier for the workspace"
+          />
+          <div className="flex items-center justify-end gap-2.5 pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsModalOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isSubmitting}
+              disabled={!newName.trim()}
+            >
+              Create Workspace
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

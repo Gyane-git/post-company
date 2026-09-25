@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
 import { Input } from '@/components/ui/Input';
-import { ShieldCheck, Info, Key, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Info, CheckCircle2, ArrowRight } from 'lucide-react';
 
 interface ConnectAccountModalProps {
   isOpen: boolean;
@@ -24,7 +24,6 @@ export function ConnectAccountModal({
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [activeStep, setActiveStep] = useState<1 | 2>(1);
 
   if (!platform) return null;
 
@@ -38,7 +37,6 @@ export function ConnectAccountModal({
       onClose();
       setUsername('');
       setDisplayName('');
-      setActiveStep(1);
     } finally {
       setIsLoading(false);
     }
@@ -57,21 +55,17 @@ export function ConnectAccountModal({
       onClose={onClose}
       size="md"
       title={`Connect ${platform.toUpperCase()}`}
-      description="Simulated OAuth 2.0 Authorization Flow"
+      description="Simulated Channel Connection Flow"
     >
       <form onSubmit={handleConnect} className="space-y-5">
-        {/* Architect Note Banner */}
+        {/* Architect Notice Banner */}
         <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900 text-xs text-blue-900 dark:text-blue-200 space-y-1">
           <div className="flex items-center gap-1.5 font-bold">
             <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span>Frontend Architecture Notice</span>
+            <span>Mock Connection Notice</span>
           </div>
           <p className="text-[11px] leading-relaxed text-blue-800 dark:text-blue-300">
-            Real OAuth redirect handlers will be processed by the forthcoming ASP.NET Core API at{' '}
-            <code className="bg-blue-100 dark:bg-blue-900 px-1 py-0.5 rounded font-mono">
-              /api/auth/{platform}/callback
-            </code>
-            . Use this form to test UI connection state and local publishing workflows.
+            This operation simulates connecting your {platformNames[platform]} channel through the ASP.NET Core backend mock integration service. No real external OAuth credentials or live social platform accounts are modified during this phase.
           </p>
         </div>
 
@@ -85,7 +79,7 @@ export function ConnectAccountModal({
               {platformNames[platform]}
             </h5>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Will grant permissions for post publishing, media upload, and analytics retrieval.
+              Enables mock post dispatching and telemetry analytics aggregation.
             </p>
           </div>
         </div>
@@ -98,7 +92,7 @@ export function ConnectAccountModal({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
-            helperText="Enter a realistic mock username to display in the UI"
+            helperText="Enter a username to associate with this channel"
           />
 
           <Input
@@ -109,10 +103,10 @@ export function ConnectAccountModal({
           />
         </div>
 
-        {/* Requested Scopes */}
+        {/* Mock Scopes */}
         <div className="space-y-2">
           <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Simulated Scopes & Permissions
+            Simulated Permissions Granted
           </label>
           <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
             <div className="flex items-center gap-2">
@@ -121,11 +115,11 @@ export function ConnectAccountModal({
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Publish videos, reels, and captions on your behalf</span>
+              <span>Publish mock videos, reels, and captions</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Fetch real-time video view and engagement webhooks</span>
+              <span>Simulated analytics webhooks and engagement telemetry</span>
             </div>
           </div>
         </div>
@@ -143,7 +137,7 @@ export function ConnectAccountModal({
             disabled={!username.trim()}
             rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
           >
-            Authorize & Connect
+            Connect Account
           </Button>
         </div>
       </form>

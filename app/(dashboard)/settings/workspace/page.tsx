@@ -9,10 +9,27 @@ import { Button } from '@/components/ui/Button';
 import { Building2, Users, Plus, Shield, Check } from 'lucide-react';
 
 export default function WorkspaceSettingsPage() {
-  const { currentWorkspace } = useWorkspace();
+  const { currentWorkspace, updateWorkspace } = useWorkspace();
   const [workspaceName, setWorkspaceName] = useState(currentWorkspace.name);
   const [workspaceSlug, setWorkspaceSlug] = useState(currentWorkspace.slug);
+  const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await updateWorkspace(currentWorkspace.id, {
+        name: workspaceName,
+        slug: workspaceSlug,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // error handled and toasted in context
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-200 max-w-4xl">
@@ -65,10 +82,8 @@ export default function WorkspaceSettingsPage() {
           <Button
             size="sm"
             variant="primary"
-            onClick={() => {
-              setSaved(true);
-              setTimeout(() => setSaved(false), 2000);
-            }}
+            isLoading={isSaving}
+            onClick={handleSave}
           >
             {saved ? 'Workspace Saved' : 'Save Changes'}
           </Button>

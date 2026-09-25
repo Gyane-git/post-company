@@ -10,13 +10,15 @@ import { PostTable } from '@/components/posts/PostTable';
 import { PostDetailsModal } from '@/components/posts/PostDetailsModal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
 import { Button } from '@/components/ui/Button';
 import { PostStatus, Post } from '@/types/post';
 import { SocialPlatform } from '@/types/social';
 import { LayoutGrid, List, PlusCircle, FileText } from 'lucide-react';
 
 export default function ContentPage() {
-  const { posts, stats, deletePost, duplicatePost, publishPost } = usePosts();
+  const { posts, loading, error, refreshPosts, deletePost, duplicatePost, publishPost } = usePosts();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<PostStatus | 'all'>('all');
@@ -130,8 +132,16 @@ export default function ContentPage() {
         onSortChange={setSortBy}
       />
 
-      {/* Content Rendering: Grid vs Table vs Empty State */}
-      {filteredPosts.length === 0 ? (
+      {/* Content Rendering: Loading vs Error vs Grid vs Table vs Empty State */}
+      {loading && posts.length === 0 ? (
+        <LoadingState type={viewMode === 'table' ? 'table' : 'card'} count={6} />
+      ) : error && posts.length === 0 ? (
+        <ErrorState
+          title="Unable to load posts"
+          message={error}
+          onRetry={refreshPosts}
+        />
+      ) : filteredPosts.length === 0 ? (
         <EmptyState
           icon={<FileText className="w-7 h-7" />}
           title="No posts matching filters"

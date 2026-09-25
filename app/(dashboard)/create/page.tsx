@@ -12,19 +12,15 @@ import { PlatformPreview } from '@/components/composer/PlatformPreview';
 import { ScheduleModal } from '@/components/calendar/ScheduleModal';
 import { PublishResultModal } from '@/components/composer/PublishResultModal';
 import { SocialPlatform } from '@/types/social';
-import { PostMedia } from '@/types/post';
+import { PostMedia, PlatformPublishResult } from '@/types/post';
 import { Button } from '@/components/ui/Button';
-import { Tabs } from '@/components/ui/Tabs';
 import {
   Save,
   Send,
   Calendar as CalendarIcon,
-  Sparkles,
   Eye,
   CheckCircle2,
-  FileCheck,
 } from 'lucide-react';
-import Link from 'next/link';
 
 export default function CreatePostPage() {
   const router = useRouter();
@@ -60,20 +56,22 @@ export default function CreatePostPage() {
   // Preview tab state
   const [previewPlatform, setPreviewPlatform] = useState<SocialPlatform>('instagram');
 
-  // Modals
+  // Modals & Action States
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showPublishResult, setShowPublishResult] = useState(false);
+  const [publishResults, setPublishResults] = useState<PlatformPublishResult[]>([]);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const [draftSavedFeedback, setDraftSavedFeedback] = useState(false);
 
   // Platform selection handlers
   const handleTogglePlatform = (p: SocialPlatform) => {
     if (selectedPlatforms.includes(p)) {
       if (selectedPlatforms.length === 1) return; // keep at least 1
-      setSelectedPlatforms(selectedPlatforms.filter((item) => item !== p));
-      if (previewPlatform === p) {
-        const remaining = selectedPlatforms.filter((item) => item !== p);
-        if (remaining.length > 0) setPreviewPlatform(remaining[0]);
+      const updated = selectedPlatforms.filter((item) => item !== p);
+      setSelectedPlatforms(updated);
+      if (previewPlatform === p && updated.length > 0) {
+        setPreviewPlatform(updated[0]);
       }
     } else {
       setSelectedPlatforms([...selectedPlatforms, p]);
@@ -111,15 +109,23 @@ export default function CreatePostPage() {
 
   // Publish Now
   const handlePublishNow = async () => {
-    await createPost({
-      title: title || caption.slice(0, 45),
-      caption,
-      hashtags,
-      media: media ? [media] : [],
-      platforms: selectedPlatforms,
-      status: 'published',
-    });
-    setShowPublishResult(true);
+    setIsPublishing(true);
+    try {
+      const created = await createPost({
+        title: title || caption.slice(0, 45),
+        caption,
+        hashtags,
+        media: media ? [media] : [],
+        platforms: selectedPlatforms,
+        status: 'published',
+      });
+      if (created.publishResults) {
+        setPublishResults(created.publishResults);
+      }
+      setShowPublishResult(true);
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   // Confirm Schedule
@@ -156,6 +162,7 @@ export default function CreatePostPage() {
               size="sm"
               onClick={handleSaveDraft}
               isLoading={isSavingDraft}
+              disabled={isPublishing}
               leftIcon={draftSavedFeedback ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Save className="w-3.5 h-3.5" />}
             >
               {draftSavedFeedback ? 'Draft Saved' : 'Save Draft'}
@@ -166,6 +173,7 @@ export default function CreatePostPage() {
               variant="secondary"
               size="sm"
               onClick={() => setShowScheduleModal(true)}
+              disabled={isSavingDraft || isPublishing}
               leftIcon={<CalendarIcon className="w-3.5 h-3.5" />}
             >
               Schedule Post
@@ -176,6 +184,8 @@ export default function CreatePostPage() {
               variant="primary"
               size="sm"
               onClick={handlePublishNow}
+              isLoading={isPublishing}
+              disabled={isSavingDraft}
               leftIcon={<Send className="w-3.5 h-3.5" />}
             >
               Publish Now
@@ -278,6 +288,7 @@ export default function CreatePostPage() {
                   size="md"
                   onClick={handleSaveDraft}
                   isLoading={isSavingDraft}
+                  disabled={isPublishing}
                   leftIcon={<Save className="w-4 h-4" />}
                 >
                   Save Draft
@@ -290,6 +301,7 @@ export default function CreatePostPage() {
                   variant="secondary"
                   size="md"
                   onClick={() => setShowScheduleModal(true)}
+                  disabled={isSavingDraft || isPublishing}
                   leftIcon={<CalendarIcon className="w-4 h-4" />}
                 >
                   Schedule Post
@@ -300,6 +312,8 @@ export default function CreatePostPage() {
                   variant="primary"
                   size="md"
                   onClick={handlePublishNow}
+                  isLoading={isPublishing}
+                  disabled={isSavingDraft}
                   leftIcon={<Send className="w-4 h-4" />}
                 >
                   Publish Now
@@ -325,6 +339,7 @@ export default function CreatePostPage() {
         onClose={() => setShowPublishResult(false)}
         platforms={selectedPlatforms}
         postTitle={title || caption.slice(0, 45)}
+        results={publishResults}
       />
     </div>
   );

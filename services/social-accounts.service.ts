@@ -1,64 +1,58 @@
-import { INITIAL_MOCK_ACCOUNTS } from '@/data/mock-social-accounts';
+import { socialAccountsApi } from '@/lib/api/social-accounts';
+import { adaptSocialAccountResponseToUi, uiPlatformToBackend } from '@/lib/adapters';
 import { SocialAccount } from '@/types/account';
 import { SocialPlatform } from '@/types/social';
-
-const mockAccountsDatabase: SocialAccount[] = [...INITIAL_MOCK_ACCOUNTS];
+import { DEFAULT_WORKSPACE_ID } from '@/lib/config';
 
 export const socialAccountsService = {
-  async getAccounts(): Promise<SocialAccount[]> {
-    await new Promise((r) => setTimeout(r, 60));
-    return [...mockAccountsDatabase];
+  async getAccounts(workspaceId: number = DEFAULT_WORKSPACE_ID): Promise<SocialAccount[]> {
+    const rawAccounts = await socialAccountsApi.getByWorkspace(workspaceId);
+    return rawAccounts.map(adaptSocialAccountResponseToUi);
   },
 
-  async connectAccount(platform: SocialPlatform, username: string, displayName?: string): Promise<SocialAccount> {
-    await new Promise((r) => setTimeout(r, 120));
-    const now = new Date().toISOString();
+  async connectAccount(
+    platform: SocialPlatform,
+    username: string,
+    displayName?: string,
+    workspaceId: number = DEFAULT_WORKSPACE_ID
+  ): Promise<SocialAccount> {
+    const backendPlatform = uiPlatformToBackend(platform);
+    const existing = await socialAccountsApi.getByWorkspace(workspaceId);
+    const target = existing.find(
+      (a) => a.platform.toLowerCase() === backendPlatform.toLowerCase()
+    );
 
-    const existingIndex = mockAccountsDatabase.findIndex((a) => a.platform === platform);
-    if (existingIndex !== -1) {
-      const updated: SocialAccount = {
-        ...mockAccountsDatabase[existingIndex],
-        username: username.replace('@', ''),
-        displayName: displayName || username,
-        connected: true,
-        status: 'connected',
-        connectedAt: now,
-        followersCount: mockAccountsDatabase[existingIndex].followersCount || 12400,
-      };
-      mockAccountsDatabase[existingIndex] = updated;
-      return updated;
-    } else {
-      const newAccount: SocialAccount = {
-        id: `acc-${platform}`,
-        platform,
-        username: username.replace('@', ''),
-        displayName: displayName || username,
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        connected: true,
-        status: 'connected',
-        connectedAt: now,
-        followersCount: 15400,
-        permissions: ['read', 'publish_content', 'read_insights'],
-      };
-      mockAccountsDatabase.push(newAccount);
-      return newAccount;
+    if (target) {
+      // Connect existing account
+      const res = await socialAccountsApi.connect(target.id);
+      return adaptSocialAccountResponseToUi(res);
     }
+
+    // Create and connect if not already present
+    const created = await socialAccountsApi.create({
+      workspaceId,
+      platform: backendPlatform,
+      platformAccountId: `${platform}_${Date.now()}`,
+      username: username.replace('@', ''),
+      displayName: displayName || username,
+    });
+
+    const connected = await socialAccountsApi.connect(created.id);
+    return adaptSocialAccountResponseToUi(connected);
   },
 
-  async disconnectAccount(platform: SocialPlatform): Promise<SocialAccount> {
-    await new Promise((r) => setTimeout(r, 100));
-    const existingIndex = mockAccountsDatabase.findIndex((a) => a.platform === platform);
-    if (existingIndex === -1) {
-      throw new Error(`Account for ${platform} not found`);
+  async disconnectAccount(platform: SocialPlatform, workspaceId: number = DEFAULT_WORKSPACE_ID): Promise<SocialAccount> {
+    const backendPlatform = uiPlatformToBackend(platform);
+    const existing = await socialAccountsApi.getByWorkspace(workspaceId);
+    const target = existing.find(
+      (a) => a.platform.toLowerCase() === backendPlatform.toLowerCase()
+    );
+
+    if (!target) {
+      throw new Error(`Account for ${platform} not found.`);
     }
 
-    const updated: SocialAccount = {
-      ...mockAccountsDatabase[existingIndex],
-      connected: false,
-      status: 'disconnected',
-      connectedAt: undefined,
-    };
-    mockAccountsDatabase[existingIndex] = updated;
-    return updated;
+    const res = await socialAccountsApi.disconnect(target.id);
+    return adaptSocialAccountResponseToUi(res);
   },
 };

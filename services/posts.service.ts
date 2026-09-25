@@ -1,187 +1,178 @@
-import { INITIAL_MOCK_POSTS } from '@/data/mock-posts';
-import { Post, PostCreateDto, PostFilterOptions, PlatformPublishResult } from '@/types/post';
-
-/**
- * Posts Service
- * Encapsulates posts retrieval, creation, updating, and simulated multi-platform publishing.
- * Designed so that when the .NET backend API is ready, methods can directly invoke HttpClient endpoints.
- */
-
-// In-memory working copy initialized from mock data
-let mockPostsDatabase: Post[] = [...INITIAL_MOCK_POSTS];
+import { postsApi } from '@/lib/api/posts';
+import { socialAccountsApi } from '@/lib/api/social-accounts';
+import { mediaApi } from '@/lib/api/media';
+import { adaptPostResponseToUi, uiPlatformToBackend, uiPostStatusToBackend } from '@/lib/adapters';
+import { Post, PostCreateDto, PostFilterOptions } from '@/types/post';
+import { DEFAULT_WORKSPACE_ID } from '@/lib/config';
 
 export const postsService = {
-  async getPosts(filter?: Partial<PostFilterOptions>): Promise<Post[]> {
-    // Simulate slight network resolution
-    await new Promise((r) => setTimeout(r, 80));
+  async getPosts(filter?: Partial<PostFilterOptions>, workspaceId: number = DEFAULT_WORKSPACE_ID): Promise<Post[]> {
+    const queryParams = {
+      workspaceId,
+      status: filter?.status && filter.status !== 'all' ? uiPostStatusToBackend(filter.status) : undefined,
+      platform: filter?.platform && filter.platform !== 'all' ? uiPlatformToBackend(filter.platform) : undefined,
+      search: filter?.searchQuery?.trim() || undefined,
+    };
 
-    let result = [...mockPostsDatabase];
-
-    if (filter?.status && filter.status !== 'all') {
-      result = result.filter((p) => p.status === filter.status);
-    }
-
-    if (filter?.platform && filter.platform !== 'all') {
-      const targetPlatform = filter.platform;
-      result = result.filter((p) => p.platforms.includes(targetPlatform));
-    }
-
-    if (filter?.searchQuery?.trim()) {
-      const q = filter.searchQuery.toLowerCase();
-      result = result.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          p.caption.toLowerCase().includes(q) ||
-          p.hashtags.some((h) => h.toLowerCase().includes(q))
-      );
-    }
+    const rawPosts = await postsApi.getAll(queryParams);
+    const posts = rawPosts.map(adaptPostResponseToUi);
 
     if (filter?.sortBy) {
       if (filter.sortBy === 'date-desc') {
-        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        posts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       } else if (filter.sortBy === 'date-asc') {
-        result.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        posts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       } else if (filter.sortBy === 'views-desc') {
-        result.sort((a, b) => (b.metrics?.views || 0) - (a.metrics?.views || 0));
+        posts.sort((a, b) => (b.metrics?.views || 0) - (a.metrics?.views || 0));
       } else if (filter.sortBy === 'engagement-desc') {
-        result.sort((a, b) => (b.metrics?.engagementRate || 0) - (a.metrics?.engagementRate || 0));
+        posts.sort((a, b) => (b.metrics?.engagementRate || 0) - (a.metrics?.engagementRate || 0));
       }
     } else {
-      // Default: newest first
-      result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      posts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
 
-    return result;
+    return posts;
   },
 
   async getPostById(id: string): Promise<Post | undefined> {
-    await new Promise((r) => setTimeout(r, 60));
-    return mockPostsDatabase.find((p) => p.id === id);
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) return undefined;
+
+    try {
+      const raw = await postsApi.getById(numId);
+      return adaptPostResponseToUi(raw);
+    } catch {
+      return undefined;
+    }
   },
 
-  async createPost(dto: PostCreateDto): Promise<Post> {
-    await new Promise((r) => setTimeout(r, 120));
-    const now = new Date().toISOString();
+  async createPost(dto: PostCreateDto, workspaceId: number = DEFAULT_WORKSPACE_ID): Promise<Post> {
+    // 1. Resolve social account IDs for selected platforms
+    const accounts = await socialAccountsApi.getByWorkspace(workspaceId);
+    const socialAccountIds: number[] = [];
 
-    const publishResults: PlatformPublishResult[] = dto.platforms.map((platform) => ({
-      platform,
-      status: dto.status === 'published' ? 'success' : 'pending',
-      publishedAt: dto.status === 'published' ? now : undefined,
-    }));
+    dto.platforms.forEach((platform) => {
+      const backendPlatform = uiPlatformToBackend(platform);
+      const matched = accounts.find(
+        (a) => a.platform.toLowerCase() === backendPlatform.toLowerCase()
+      );
+      if (matched) {
+        socialAccountIds.push(matched.id);
+      }
+    });
 
-    const newPost: Post = {
-      id: `post-${Date.now().toString().slice(-6)}`,
-      title: dto.title || (dto.caption.slice(0, 40) + '...'),
+    // 2. Handle media metadata if present
+    let mediaId: number | null = null;
+    if (dto.media && dto.media.length > 0) {
+      const firstMedia = dto.media[0];
+      const parsedMediaId = parseInt(firstMedia.id, 10);
+      if (!isNaN(parsedMediaId) && parsedMediaId > 0) {
+        mediaId = parsedMediaId;
+      } else if (firstMedia.url) {
+        try {
+          const createdMedia = await mediaApi.create({
+            workspaceId,
+            fileName: firstMedia.filename || 'media-asset.jpg',
+            fileUrl: firstMedia.url,
+            mimeType: firstMedia.type === 'video' ? 'video/mp4' : 'image/jpeg',
+            fileSize: firstMedia.sizeBytes || 1048576,
+            duration: firstMedia.durationSec || null,
+          });
+          mediaId = createdMedia.id;
+        } catch {
+          // If media metadata fails to register, continue without failing post creation
+        }
+      }
+    }
+
+    // 3. Format scheduled date to UTC ISO string if applicable
+    let scheduledAtUtc: string | null = null;
+    if (dto.status === 'scheduled' && dto.scheduledAt) {
+      scheduledAtUtc = new Date(dto.scheduledAt).toISOString();
+    }
+
+    const payload = {
+      workspaceId,
+      title: dto.title,
       caption: dto.caption,
+      status: uiPostStatusToBackend(dto.status),
+      mediaId,
+      scheduledAt: scheduledAtUtc,
+      socialAccountIds: socialAccountIds.length > 0 ? socialAccountIds : [1],
       hashtags: dto.hashtags,
-      media: dto.media,
-      platforms: dto.platforms,
-      status: dto.status,
-      createdAt: now,
-      updatedAt: now,
-      scheduledAt: dto.status === 'scheduled' ? dto.scheduledAt : undefined,
-      publishedAt: dto.status === 'published' ? now : undefined,
-      publishResults: dto.status === 'published' ? publishResults : undefined,
-      metrics:
-        dto.status === 'published'
-          ? {
-              views: 124,
-              likes: 18,
-              comments: 3,
-              shares: 2,
-              engagementRate: 5.4,
-              reach: 240,
-              impressions: 310,
-            }
-          : undefined,
-      author: {
-        id: 'usr-01',
-        name: 'Gyanendra Shah',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-      },
     };
 
-    mockPostsDatabase = [newPost, ...mockPostsDatabase];
-    return newPost;
+    const created = await postsApi.create(payload);
+    return adaptPostResponseToUi(created);
   },
 
   async updatePost(id: string, updates: Partial<Post>): Promise<Post> {
-    await new Promise((r) => setTimeout(r, 100));
-    const index = mockPostsDatabase.findIndex((p) => p.id === id);
-    if (index === -1) {
-      throw new Error(`Post ${id} not found`);
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) throw new Error('Invalid post ID');
+
+    let socialAccountIds: number[] | undefined;
+    if (updates.platforms && updates.platforms.length > 0) {
+      const accounts = await socialAccountsApi.getByWorkspace(DEFAULT_WORKSPACE_ID);
+      socialAccountIds = [];
+      updates.platforms.forEach((platform) => {
+        const backendPlatform = uiPlatformToBackend(platform);
+        const matched = accounts.find(
+          (a) => a.platform.toLowerCase() === backendPlatform.toLowerCase()
+        );
+        if (matched) socialAccountIds!.push(matched.id);
+      });
     }
 
-    const updated = {
-      ...mockPostsDatabase[index],
-      ...updates,
-      updatedAt: new Date().toISOString(),
+    let mediaId: number | null | undefined = undefined;
+    if (updates.media) {
+      if (updates.media.length > 0) {
+        const parsed = parseInt(updates.media[0].id, 10);
+        mediaId = !isNaN(parsed) && parsed > 0 ? parsed : null;
+      } else {
+        mediaId = null;
+      }
+    }
+
+    const payload = {
+      title: updates.title || '',
+      caption: updates.caption || '',
+      status: updates.status ? uiPostStatusToBackend(updates.status) : undefined,
+      mediaId,
+      scheduledAt: updates.scheduledAt ? new Date(updates.scheduledAt).toISOString() : undefined,
+      socialAccountIds,
+      hashtags: updates.hashtags,
     };
-    mockPostsDatabase[index] = updated;
-    return updated;
+
+    const res = await postsApi.update(numId, payload);
+    return adaptPostResponseToUi(res);
   },
 
   async deletePost(id: string): Promise<boolean> {
-    await new Promise((r) => setTimeout(r, 80));
-    const initialLen = mockPostsDatabase.length;
-    mockPostsDatabase = mockPostsDatabase.filter((p) => p.id !== id);
-    return mockPostsDatabase.length < initialLen;
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) return false;
+    return await postsApi.delete(numId);
   },
 
   async duplicatePost(id: string): Promise<Post> {
-    await new Promise((r) => setTimeout(r, 100));
-    const target = mockPostsDatabase.find((p) => p.id === id);
-    if (!target) throw new Error(`Post ${id} not found`);
-
-    const now = new Date().toISOString();
-    const duplicated: Post = {
-      ...target,
-      id: `post-${Date.now().toString().slice(-6)}`,
-      title: `${target.title} (Copy)`,
-      status: 'draft',
-      createdAt: now,
-      updatedAt: now,
-      scheduledAt: undefined,
-      publishedAt: undefined,
-      metrics: undefined,
-      publishResults: undefined,
-    };
-
-    mockPostsDatabase = [duplicated, ...mockPostsDatabase];
-    return duplicated;
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) throw new Error('Invalid post ID');
+    const res = await postsApi.duplicate(numId);
+    return adaptPostResponseToUi(res);
   },
 
   async publishPost(id: string): Promise<Post> {
-    await new Promise((r) => setTimeout(r, 150));
-    const target = mockPostsDatabase.find((p) => p.id === id);
-    if (!target) throw new Error(`Post ${id} not found`);
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) throw new Error('Invalid post ID');
+    const res = await postsApi.publish(numId);
+    return adaptPostResponseToUi(res);
+  },
 
-    const now = new Date().toISOString();
-    const publishResults: PlatformPublishResult[] = target.platforms.map((platform) => ({
-      platform,
-      status: 'success',
-      publishedAt: now,
-    }));
-
-    const updated: Post = {
-      ...target,
-      status: 'published',
-      publishedAt: now,
-      updatedAt: now,
-      publishResults,
-      metrics: target.metrics || {
-        views: 45,
-        likes: 7,
-        comments: 1,
-        shares: 0,
-        engagementRate: 3.8,
-        reach: 90,
-        impressions: 110,
-      },
-    };
-
-    const index = mockPostsDatabase.findIndex((p) => p.id === id);
-    mockPostsDatabase[index] = updated;
-    return updated;
+  async schedulePost(id: string, scheduledAt: string): Promise<Post> {
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) throw new Error('Invalid post ID');
+    const res = await postsApi.schedule(numId, {
+      scheduledAt: new Date(scheduledAt).toISOString(),
+    });
+    return adaptPostResponseToUi(res);
   },
 };

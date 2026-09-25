@@ -3,6 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePosts } from '@/context/posts-context';
+import { postsService } from '@/services/posts.service';
 import { PageHeader } from '@/components/common/PageHeader';
 import { MediaUploader } from '@/components/composer/MediaUploader';
 import { PlatformSelector } from '@/components/composer/PlatformSelector';
@@ -10,9 +11,10 @@ import { CaptionEditor } from '@/components/composer/CaptionEditor';
 import { HashtagInput } from '@/components/composer/HashtagInput';
 import { PlatformPreview } from '@/components/composer/PlatformPreview';
 import { SocialPlatform } from '@/types/social';
-import { PostMedia } from '@/types/post';
+import { Post, PostMedia } from '@/types/post';
 import { Button } from '@/components/ui/Button';
-import { Save, ArrowLeft } from 'lucide-react';
+import { LoadingState } from '@/components/common/LoadingState';
+import { Save } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
@@ -20,7 +22,8 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
   const router = useRouter();
   const { posts, updatePost } = usePosts();
 
-  const post = posts.find((p) => p.id === id);
+  const [post, setPost] = useState<Post | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
@@ -31,17 +34,46 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (post) {
-      setTitle(post.title);
-      setCaption(post.caption);
-      setHashtags(post.hashtags);
-      setMedia(post.media[0] || null);
-      setSelectedPlatforms(post.platforms);
-      if (post.platforms.length > 0) {
-        setPreviewPlatform(post.platforms[0]);
+    const existing = posts.find((p) => p.id === id);
+    if (existing) {
+      setPost(existing);
+      setTitle(existing.title);
+      setCaption(existing.caption);
+      setHashtags(existing.hashtags);
+      setMedia(existing.media[0] || null);
+      setSelectedPlatforms(existing.platforms);
+      if (existing.platforms.length > 0) {
+        setPreviewPlatform(existing.platforms[0]);
       }
+      setLoading(false);
+    } else {
+      setLoading(true);
+      postsService
+        .getPostById(id)
+        .then((fetched) => {
+          if (fetched) {
+            setPost(fetched);
+            setTitle(fetched.title);
+            setCaption(fetched.caption);
+            setHashtags(fetched.hashtags);
+            setMedia(fetched.media[0] || null);
+            setSelectedPlatforms(fetched.platforms);
+            if (fetched.platforms.length > 0) {
+              setPreviewPlatform(fetched.platforms[0]);
+            }
+          }
+        })
+        .finally(() => setLoading(false));
     }
-  }, [post]);
+  }, [id, posts]);
+
+  if (loading) {
+    return (
+      <div className="py-12">
+        <LoadingState type="full" />
+      </div>
+    );
+  }
 
   if (!post) {
     return (

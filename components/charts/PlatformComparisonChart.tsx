@@ -46,7 +46,14 @@ export function PlatformComparisonChart({
                 <span className="font-bold text-slate-900 dark:text-slate-100">
                   {value.toLocaleString()}
                 </span>
-                <span className="text-[11px] text-slate-400 font-mono">({percentage}%)</span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  ({percentage}%)
+                </span>
+                {metricLabel && (
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    {metricLabel}
+                  </span>
+                )}
               </div>
             </div>
 

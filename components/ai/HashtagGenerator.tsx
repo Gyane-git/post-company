@@ -5,7 +5,6 @@ import { SocialPlatform } from '@/types/social';
 import { aiService } from '@/services/ai.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
 import { Hash, Sparkles, Copy, Check } from 'lucide-react';
 
 export function HashtagGenerator() {
@@ -56,7 +55,7 @@ export function HashtagGenerator() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="md:col-span-2">
           <Input
             label="Campaign Focus / Niche Topic"
@@ -64,6 +63,22 @@ export function HashtagGenerator() {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
           />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            Platform
+          </label>
+          <select
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
+            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+          >
+            <option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option>
+            <option value="tiktok">TikTok</option>
+            <option value="youtube">YouTube</option>
+          </select>
         </div>
 
         <div>

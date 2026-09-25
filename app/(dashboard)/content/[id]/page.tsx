@@ -1,27 +1,23 @@
 'use client';
 
-import React, { use } from 'react';
+import React, { use, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { notFound, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { usePosts } from '@/context/posts-context';
+import { postsService } from '@/services/posts.service';
 import { PageHeader } from '@/components/common/PageHeader';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { SocialPlatformBadge } from '@/components/common/SocialPlatformBadge';
-import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
 import { Button } from '@/components/ui/Button';
+import { LoadingState } from '@/components/common/LoadingState';
+import { Post } from '@/types/post';
 import {
   ArrowLeft,
-  Calendar,
-  Eye,
-  Heart,
-  MessageCircle,
-  Share2,
-  CheckCircle2,
-  AlertCircle,
   Clock,
   Play,
   Copy,
   Trash2,
+  Send,
 } from 'lucide-react';
 
 export default function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -29,7 +25,33 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
   const { posts, deletePost, duplicatePost, publishPost } = usePosts();
   const router = useRouter();
 
-  const post = posts.find((p) => p.id === id);
+  const [post, setPost] = useState<Post | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [actionLoading, setActionLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    const existing = posts.find((p) => p.id === id);
+    if (existing) {
+      setPost(existing);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      postsService
+        .getPostById(id)
+        .then((data) => {
+          if (data) setPost(data);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [id, posts]);
+
+  if (loading) {
+    return (
+      <div className="py-12">
+        <LoadingState type="full" />
+      </div>
+    );
+  }
 
   if (!post) {
     return (
@@ -49,6 +71,38 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
 
   const media = post.media[0];
 
+  const handleDuplicate = async () => {
+    setActionLoading(true);
+    try {
+      const dup = await duplicatePost(post.id);
+      router.push(`/content/${dup.id}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    setActionLoading(true);
+    try {
+      const updated = await publishPost(post.id);
+      setPost(updated);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (confirm('Are you sure you want to delete this post?')) {
+      setActionLoading(true);
+      try {
+        await deletePost(post.id);
+        router.push('/content');
+      } finally {
+        setActionLoading(false);
+      }
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-200">
       <PageHeader
@@ -64,10 +118,8 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
             <Button
               size="sm"
               variant="outline"
-              onClick={async () => {
-                const dup = await duplicatePost(post.id);
-                router.push(`/content/${dup.id}`);
-              }}
+              onClick={handleDuplicate}
+              disabled={actionLoading}
               leftIcon={<Copy className="w-3.5 h-3.5" />}
             >
               Duplicate
@@ -76,7 +128,9 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
               <Button
                 size="sm"
                 variant="primary"
-                onClick={() => publishPost(post.id)}
+                onClick={handlePublish}
+                isLoading={actionLoading}
+                leftIcon={<Send className="w-3.5 h-3.5" />}
               >
                 Publish Now
               </Button>
@@ -84,12 +138,8 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
             <Button
               size="sm"
               variant="danger"
-              onClick={async () => {
-                if (confirm('Delete this post?')) {
-                  await deletePost(post.id);
-                  router.push('/content');
-                }
-              }}
+              onClick={handleDelete}
+              disabled={actionLoading}
               leftIcon={<Trash2 className="w-3.5 h-3.5" />}
             >
               Delete
@@ -110,7 +160,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-xs text-slate-400">No media</span>
+              <span className="text-xs text-slate-400">No media attached</span>
             )}
             {media?.type === 'video' && (
               <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white">

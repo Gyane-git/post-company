@@ -8,33 +8,37 @@ import { ConnectAccountModal } from '@/components/social/ConnectAccountModal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { LoadingState } from '@/components/common/LoadingState';
 import { SocialPlatform } from '@/types/social';
 import { SocialAccount } from '@/types/account';
-import {
-  Share2,
-  ShieldAlert,
-  Code2,
-  CheckCircle2,
-  ExternalLink,
-  KeyRound,
-  RefreshCw,
-} from 'lucide-react';
+import { Code2 } from 'lucide-react';
 
 export default function SocialAccountsPage() {
-  const { accounts, connectedCount, connectAccount, disconnectAccount } = useWorkspace();
+  const { accounts, connectedCount, loadingAccounts, connectAccount, disconnectAccount } = useWorkspace();
 
   const [connectingPlatform, setConnectingPlatform] = useState<SocialPlatform | null>(null);
   const [disconnectingPlatform, setDisconnectingPlatform] = useState<SocialPlatform | null>(null);
   const [managedAccount, setManagedAccount] = useState<SocialAccount | null>(null);
+  const [actionInProgress, setActionInProgress] = useState<boolean>(false);
 
   const handleConfirmConnect = async (platform: SocialPlatform, username: string, displayName?: string) => {
-    await connectAccount(platform, username, displayName);
+    setActionInProgress(true);
+    try {
+      await connectAccount(platform, username, displayName);
+    } finally {
+      setActionInProgress(false);
+    }
   };
 
   const handleConfirmDisconnect = async () => {
     if (disconnectingPlatform) {
-      await disconnectAccount(disconnectingPlatform);
-      setDisconnectingPlatform(null);
+      setActionInProgress(true);
+      try {
+        await disconnectAccount(disconnectingPlatform);
+      } finally {
+        setActionInProgress(false);
+        setDisconnectingPlatform(null);
+      }
     }
   };
 
@@ -54,7 +58,7 @@ export default function SocialAccountsPage() {
         }
       />
 
-      {/* Backend Architecture Readiness Callout */}
+      {/* Backend Architecture Status Callout */}
       <div className="p-4 sm:p-5 rounded-2xl bg-linear-to-r from-blue-50 via-indigo-50/50 to-white dark:from-slate-900 dark:via-blue-950/20 dark:to-slate-900 border border-blue-200/90 dark:border-blue-900 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start gap-3.5 max-w-2xl">
           <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -62,33 +66,38 @@ export default function SocialAccountsPage() {
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <span>Production .NET & PostgreSQL Architecture Ready</span>
+              <span>Connected to ASP.NET Core 8 Web API & SQL Server</span>
             </h4>
             <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-              Account state and OAuth tokens will be securely orchestrated by the upcoming ASP.NET backend. Token refreshes, webhook subscriptions, and granular scopes are stubbed cleanly in TypeScript interfaces without mock compromises.
+              Channel connection state and tokens are managed directly by the ASP.NET Core backend. Simulated channel authentication enables end-to-end publishing tests without requiring third-party developer app verifications.
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs font-mono font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800">
-            OAuth 2.0 PKCE Flow
+            REST API Synced
           </span>
         </div>
       </div>
 
       {/* Social Accounts Grid (4 platforms) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {accounts.map((acc) => (
-          <SocialAccountCard
-            key={acc.platform}
-            account={acc}
-            onConnect={(p) => setConnectingPlatform(p)}
-            onDisconnect={(p) => setDisconnectingPlatform(p)}
-            onManage={(a) => setManagedAccount(a)}
-          />
-        ))}
-      </div>
+      {loadingAccounts && accounts.length === 0 ? (
+        <LoadingState count={4} />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {accounts.map((acc) => (
+            <SocialAccountCard
+              key={acc.platform}
+              account={acc}
+              isLoading={actionInProgress}
+              onConnect={(p) => setConnectingPlatform(p)}
+              onDisconnect={(p) => setDisconnectingPlatform(p)}
+              onManage={(a) => setManagedAccount(a)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Connect Account Modal */}
       <ConnectAccountModal
@@ -114,7 +123,7 @@ export default function SocialAccountsPage() {
         <Modal
           isOpen={!!managedAccount}
           onClose={() => setManagedAccount(null)}
-          title={`${managedAccount.displayName} — Permissions`}
+          title={`${managedAccount.displayName} — Channel Info`}
           description={`Account ID: ${managedAccount.id} • Platform: ${managedAccount.platform}`}
           size="md"
           footer={

@@ -3,7 +3,7 @@
 import React from 'react';
 import { TopPerformingPost } from '@/types/analytics';
 import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
-import { Eye, Heart, MessageCircle, Share2, TrendingUp } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 interface TopContentTableProps {
   posts: TopPerformingPost[];

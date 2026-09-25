@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useWorkspace } from '@/context/workspace-context';
 import { analyticsService } from '@/services/analytics.service';
+import { parseApiError } from '@/lib/api/client';
 import { DateRangePreset, OverviewMetrics, PlatformMetrics, TimeSeriesPoint, TopPerformingPost } from '@/types/analytics';
 import { PageHeader } from '@/components/common/PageHeader';
 import { StatCard } from '@/components/common/StatCard';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
 import { AreaChart } from '@/components/charts/AreaChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PlatformComparisonChart } from '@/components/charts/PlatformComparisonChart';
@@ -24,39 +28,47 @@ import {
 } from 'lucide-react';
 
 export default function AnalyticsPage() {
+  const { currentWorkspace } = useWorkspace();
+  const workspaceId = Number(currentWorkspace.id) || 1;
+
   const [range, setRange] = useState<DateRangePreset>('30d');
   const [metrics, setMetrics] = useState<OverviewMetrics | null>(null);
   const [timeseries, setTimeseries] = useState<TimeSeriesPoint[]>([]);
   const [platformMetrics, setPlatformMetrics] = useState<PlatformMetrics[]>([]);
   const [topPosts, setTopPosts] = useState<TopPerformingPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Active chart tab
   const [activeChartMetric, setActiveChartMetric] = useState<'reach' | 'engagement' | 'views'>('reach');
 
-  useEffect(() => {
-    let mounted = true;
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
 
-    Promise.all([
-      analyticsService.getOverview(range),
-      analyticsService.getTimeSeries(range),
-      analyticsService.getPlatformMetrics(),
-      analyticsService.getTopPerforming(),
-    ]).then(([overviewData, tsData, platData, topData]) => {
-      if (mounted) {
-        setMetrics(overviewData);
-        setTimeseries(tsData);
-        setPlatformMetrics(platData);
-        setTopPosts(topData);
-        setIsLoading(false);
-      }
-    });
+    try {
+      const [overviewData, tsData, platData, topData] = await Promise.all([
+        analyticsService.getOverview(range, workspaceId),
+        analyticsService.getTimeSeries(range, workspaceId),
+        analyticsService.getPlatformMetrics(workspaceId),
+        analyticsService.getTopPerforming(workspaceId),
+      ]);
 
-    return () => {
-      mounted = false;
-    };
-  }, [range]);
+      setMetrics(overviewData);
+      setTimeseries(tsData);
+      setPlatformMetrics(platData);
+      setTopPosts(topData);
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      setError(errMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [range, workspaceId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const donutItems = platformMetrics.map((p) => {
     const colors: Record<string, string> = {
@@ -102,9 +114,20 @@ export default function AnalyticsPage() {
         }
       />
 
-      {/* Top 8 Primary Metric Cards */}
-      {metrics && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 sm:gap-4">
+      {/* Loading & Error States */}
+      {isLoading && !metrics ? (
+        <LoadingState type="full" />
+      ) : error && !metrics ? (
+        <ErrorState
+          title="Unable to load analytics"
+          message={error}
+          onRetry={fetchData}
+        />
+      ) : (
+        <>
+          {/* Top 8 Primary Metric Cards */}
+          {metrics && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 sm:gap-4">
           <StatCard
             title="Total Reach"
             value={metrics.totalReach}
@@ -302,6 +325,8 @@ export default function AnalyticsPage() {
 
         <TopContentTable posts={topPosts} />
       </div>
+        </>
+      )}
     </div>
   );
 }

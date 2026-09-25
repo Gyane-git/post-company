@@ -29,8 +29,14 @@ export function ContentIdeator() {
 
   // Load initial sample ideas on first render
   React.useEffect(() => {
-    handleGenerate();
-  }, []);
+    let mounted = true;
+    aiService.generateIdeas({ industry, audience, goal }).then((results) => {
+      if (mounted) setIdeas(results);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [industry, audience, goal]);
 
   return (
     <div className="space-y-6">

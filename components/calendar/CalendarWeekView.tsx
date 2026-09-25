@@ -35,10 +35,14 @@ export function CalendarWeekView({
   });
 
   const getPostsForDay = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const targetY = date.getFullYear();
+    const targetM = date.getMonth();
+    const targetD = date.getDate();
     return posts.filter((p) => {
       const targetTime = p.scheduledAt || p.publishedAt || p.createdAt;
-      return targetTime.startsWith(dateStr);
+      if (!targetTime) return false;
+      const d = new Date(targetTime);
+      return d.getFullYear() === targetY && d.getMonth() === targetM && d.getDate() === targetD;
     });
   };
 

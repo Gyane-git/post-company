@@ -3,7 +3,6 @@
 import React from 'react';
 import { PlatformMetrics } from '@/types/analytics';
 import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
-import { Users, Eye, TrendingUp, FileText } from 'lucide-react';
 
 interface PlatformMetricCardProps {
   metrics: PlatformMetrics;

@@ -1,34 +1,69 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { NotificationItem } from '@/types/notification';
 import { notificationsService } from '@/services/notifications.service';
+import { useToast } from '@/context/toast-context';
+import { useWorkspace } from '@/context/workspace-context';
+import { parseApiError } from '@/lib/api/client';
 
 interface NotificationContextType {
   notifications: NotificationItem[];
   unreadCount: number;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
+  loading: boolean;
+  refreshNotifications: () => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
   addNotification: (notification: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>) => void;
 }
-
-import { INITIAL_MOCK_NOTIFICATIONS } from '@/data/mock-notifications';
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_MOCK_NOTIFICATIONS);
+  const { currentWorkspace } = useWorkspace();
+  const workspaceId = Number(currentWorkspace.id) || 1;
+
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const toast = useToast();
+
+  const refreshNotifications = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await notificationsService.getNotifications(workspaceId);
+      setNotifications(data);
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to load notifications.');
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, toast]);
+
+  useEffect(() => {
+    refreshNotifications();
+  }, [refreshNotifications]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markAsRead = async (id: string) => {
-    const updated = await notificationsService.markAsRead(id);
-    setNotifications(updated);
+    try {
+      const updated = await notificationsService.markAsRead(id, workspaceId);
+      setNotifications(updated);
+    } catch {
+      // Local optimistic fallback
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    }
   };
 
   const markAllAsRead = async () => {
-    const updated = await notificationsService.markAllAsRead();
-    setNotifications(updated);
+    try {
+      const updated = await notificationsService.markAllAsRead(workspaceId);
+      setNotifications(updated);
+      toast.success('All notifications marked as read.');
+    } catch {
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    }
   };
 
   const addNotification = (item: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>) => {
@@ -46,6 +81,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       value={{
         notifications,
         unreadCount,
+        loading,
+        refreshNotifications,
         markAsRead,
         markAllAsRead,
         addNotification,

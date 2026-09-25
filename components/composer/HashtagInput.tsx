@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Plus, Hash } from 'lucide-react';
+import { X, Hash } from 'lucide-react';
 
 interface HashtagInputProps {
   hashtags: string[];

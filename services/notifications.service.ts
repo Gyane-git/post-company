@@ -1,21 +1,24 @@
-import { INITIAL_MOCK_NOTIFICATIONS } from '@/data/mock-notifications';
+import { notificationsApi } from '@/lib/api/notifications';
+import { adaptNotificationResponseToUi } from '@/lib/adapters';
 import { NotificationItem } from '@/types/notification';
-
-let mockNotifications: NotificationItem[] = [...INITIAL_MOCK_NOTIFICATIONS];
+import { DEFAULT_WORKSPACE_ID } from '@/lib/config';
 
 export const notificationsService = {
-  async getNotifications(): Promise<NotificationItem[]> {
-    await new Promise((r) => setTimeout(r, 40));
-    return [...mockNotifications];
+  async getNotifications(workspaceId: number = DEFAULT_WORKSPACE_ID): Promise<NotificationItem[]> {
+    const raw = await notificationsApi.getByWorkspace(workspaceId);
+    return raw.map(adaptNotificationResponseToUi);
   },
 
-  async markAsRead(id: string): Promise<NotificationItem[]> {
-    mockNotifications = mockNotifications.map((n) => (n.id === id ? { ...n, read: true } : n));
-    return [...mockNotifications];
+  async markAsRead(id: string, workspaceId: number = DEFAULT_WORKSPACE_ID): Promise<NotificationItem[]> {
+    const numId = parseInt(id, 10);
+    if (!isNaN(numId)) {
+      await notificationsApi.markAsRead(numId);
+    }
+    return this.getNotifications(workspaceId);
   },
 
-  async markAllAsRead(): Promise<NotificationItem[]> {
-    mockNotifications = mockNotifications.map((n) => ({ ...n, read: true }));
-    return [...mockNotifications];
+  async markAllAsRead(workspaceId: number = DEFAULT_WORKSPACE_ID): Promise<NotificationItem[]> {
+    await notificationsApi.markAllAsRead();
+    return this.getNotifications(workspaceId);
   },
 };

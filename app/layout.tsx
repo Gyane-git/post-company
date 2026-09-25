@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/context/theme-context";
 import { WorkspaceProvider } from "@/context/workspace-context";
 import { PostsProvider } from "@/context/posts-context";
 import { NotificationProvider } from "@/context/notification-context";
+import { ToastProvider } from "@/context/toast-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,11 +36,13 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-slate-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
         <ThemeProvider>
-          <WorkspaceProvider>
-            <PostsProvider>
-              <NotificationProvider>{children}</NotificationProvider>
-            </PostsProvider>
-          </WorkspaceProvider>
+          <ToastProvider>
+            <WorkspaceProvider>
+              <PostsProvider>
+                <NotificationProvider>{children}</NotificationProvider>
+              </PostsProvider>
+            </WorkspaceProvider>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

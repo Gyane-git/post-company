@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { SocialPlatform } from '@/types/social';
+import { PlatformPublishResult } from '@/types/post';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
-import { CheckCircle2, Loader2, Sparkles, ExternalLink } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 interface PublishResultModalProps {
@@ -13,11 +14,7 @@ interface PublishResultModalProps {
   onClose: () => void;
   platforms: SocialPlatform[];
   postTitle: string;
-}
-
-interface StepStatus {
-  platform: SocialPlatform;
-  status: 'pending' | 'publishing' | 'success';
+  results?: PlatformPublishResult[];
 }
 
 export function PublishResultModal({
@@ -25,40 +22,32 @@ export function PublishResultModal({
   onClose,
   platforms,
   postTitle,
+  results,
 }: PublishResultModalProps) {
-  const [statuses, setStatuses] = useState<StepStatus[]>([]);
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(true);
 
   useEffect(() => {
-    if (!isOpen) {
-      setStatuses([]);
-      setIsCompleted(false);
-      return;
+    if (!isOpen) return;
+
+    // Brief simulation of backend multi-network dispatch
+    const timer = setTimeout(() => {
+      setIsProcessing(false);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const isCompleted = !isProcessing;
+
+  const getPlatformStatus = (platform: SocialPlatform) => {
+    if (results && results.length > 0) {
+      const match = results.find((r) => r.platform === platform);
+      if (match) return match.status;
     }
-
-    const initial = platforms.map((p) => ({ platform: p, status: 'pending' as const }));
-    setStatuses(initial);
-
-    // Simulate multi-platform sequential publishing
-    platforms.forEach((p, idx) => {
-      // Start publishing
-      setTimeout(() => {
-        setStatuses((prev) =>
-          prev.map((item) => (item.platform === p ? { ...item, status: 'publishing' } : item))
-        );
-      }, idx * 450 + 100);
-
-      // Finish publishing
-      setTimeout(() => {
-        setStatuses((prev) =>
-          prev.map((item) => (item.platform === p ? { ...item, status: 'success' } : item))
-        );
-        if (idx === platforms.length - 1) {
-          setIsCompleted(true);
-        }
-      }, (idx + 1) * 600 + 200);
-    });
-  }, [isOpen, platforms]);
+    return isCompleted ? 'success' : 'pending';
+  };
 
   return (
     <Modal
@@ -67,12 +56,12 @@ export function PublishResultModal({
         if (isCompleted) onClose();
       }}
       size="md"
-      title={isCompleted ? 'Published Successfully! 🎉' : 'Publishing Post...'}
-      description={`"${postTitle.slice(0, 50)}..." is being dispatched across selected channels.`}
+      title={isCompleted ? 'Published Successfully! 🎉' : 'Publishing to Channels...'}
+      description={`"${postTitle.slice(0, 50)}..." is being processed by the backend mock publishing service.`}
       footer={
         <div className="flex items-center justify-between w-full">
           <span className="text-xs text-slate-400">
-            {isCompleted ? 'All channels reported 200 OK' : 'Dispatching network payloads...'}
+            {isCompleted ? 'All channels processed by API' : 'Dispatching network payloads...'}
           </span>
           <div className="flex items-center gap-2">
             {isCompleted && (
@@ -92,54 +81,61 @@ export function PublishResultModal({
       }
     >
       <div className="space-y-3 py-2">
-        {statuses.map((item) => (
-          <div
-            key={item.platform}
-            className={`p-3.5 rounded-xl border flex items-center justify-between transition-all duration-300 ${
-              item.status === 'success'
-                ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
-                : item.status === 'publishing'
-                ? 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800 shadow-xs'
-                : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 opacity-60'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="p-2 rounded-lg bg-white dark:bg-slate-800 shadow-xs">
-                <SocialPlatformIcon platform={item.platform} size={18} />
-              </span>
-              <div>
-                <p className="text-xs font-bold capitalize text-slate-900 dark:text-slate-100">
-                  {item.platform}
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {item.status === 'success'
-                    ? 'Published to feed & timeline'
-                    : item.status === 'publishing'
-                    ? 'Uploading transcode & metadata...'
-                    : 'Queued in pipeline'}
-                </p>
+        {platforms.map((platform) => {
+          const status = getPlatformStatus(platform);
+
+          return (
+            <div
+              key={platform}
+              className={`p-3.5 rounded-xl border flex items-center justify-between transition-all duration-300 ${
+                status === 'success'
+                  ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+                  : status === 'failed'
+                  ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800'
+                  : 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="p-2 rounded-lg bg-white dark:bg-slate-800 shadow-xs">
+                  <SocialPlatformIcon platform={platform} size={18} />
+                </span>
+                <div>
+                  <p className="text-xs font-bold capitalize text-slate-900 dark:text-slate-100">
+                    {platform}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {status === 'success'
+                      ? 'Mock publish succeeded'
+                      : status === 'failed'
+                      ? 'Publish failed on this channel'
+                      : 'Sending request to backend...'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                {status === 'success' && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Published</span>
+                  </div>
+                )}
+                {status === 'failed' && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Failed</span>
+                  </div>
+                )}
+                {status === 'pending' && (
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Processing...</span>
+                  </div>
+                )}
               </div>
             </div>
-
-            <div className="text-right">
-              {item.status === 'success' && (
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Success</span>
-                </div>
-              )}
-              {item.status === 'publishing' && (
-                <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Publishing...</span>
-                </div>
-              )}
-              {item.status === 'pending' && (
-                <span className="text-xs text-slate-400 font-mono">Waiting...</span>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Modal>
   );

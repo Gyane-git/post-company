@@ -1,12 +1,15 @@
 'use client';
 
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { SocialAccount } from '@/types/account';
 import { SocialPlatform } from '@/types/social';
 import { UserProfile, Workspace } from '@/types/user';
+import { workspacesApi } from '@/lib/api/workspaces';
 import { socialAccountsService } from '@/services/social-accounts.service';
-import { INITIAL_MOCK_ACCOUNTS } from '@/data/mock-social-accounts';
-import { APP_CONFIG } from '@/config/app-config';
+import { adaptWorkspaceResponseToUi } from '@/lib/adapters';
+import { DEFAULT_WORKSPACE_ID, DEFAULT_TIMEZONE } from '@/lib/config';
+import { useToast } from '@/context/toast-context';
+import { parseApiError } from '@/lib/api/client';
 
 interface WorkspaceContextType {
   currentWorkspace: Workspace;
@@ -16,57 +19,84 @@ interface WorkspaceContextType {
   accounts: SocialAccount[];
   connectedCount: number;
   loadingAccounts: boolean;
+  refreshAccounts: () => Promise<void>;
   connectAccount: (platform: SocialPlatform, username: string, displayName?: string) => Promise<SocialAccount>;
   disconnectAccount: (platform: SocialPlatform) => Promise<SocialAccount>;
+  updateWorkspace: (id: string, data: { name?: string; slug?: string; description?: string }) => Promise<Workspace>;
+  createWorkspace: (data: { name: string; slug: string; description?: string }) => Promise<Workspace>;
 }
 
 const DEFAULT_USER: UserProfile = {
   id: 'usr-01',
-  name: 'Gyanendra Shah',
-  email: 'gyanendra@devmind.io',
+  name: 'Alex Mercer',
+  email: 'alex.mercer@devmind.com',
   role: 'Owner',
   avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  bio: 'Digital marketing lead and technical founder building omnichannel distribution.',
-  timezone: APP_CONFIG.defaultTimezone,
+  bio: 'Digital marketing lead and agency founder building omnichannel distribution.',
+  timezone: DEFAULT_TIMEZONE,
   language: 'English',
 };
 
-const DEFAULT_WORKSPACES: Workspace[] = [
-  {
-    id: 'ws-devmind',
-    name: 'DevMind Media Lab',
-    slug: 'devmind-media',
-    logo: 'DM',
-    plan: 'Pro Enterprise',
-    members: [
-      { id: 'usr-01', name: 'Gyanendra Shah', email: 'gyanendra@devmind.io', role: 'Owner', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80', status: 'active' },
-      { id: 'usr-02', name: 'Suman Shrestha', email: 'suman@devmind.io', role: 'Admin', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80', status: 'active' },
-      { id: 'usr-03', name: 'Pooja Thapa', email: 'pooja@devmind.io', role: 'Member', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80', status: 'active' },
-    ],
-  },
-  {
-    id: 'ws-client-growth',
-    name: 'Apex Growth Agency',
-    slug: 'apex-growth',
-    logo: 'AG',
-    plan: 'Growth Scale',
-    members: [
-      { id: 'usr-01', name: 'Gyanendra Shah', email: 'gyanendra@devmind.io', role: 'Owner', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80', status: 'active' },
-    ],
-  },
-];
+const FALLBACK_WORKSPACE: Workspace = {
+  id: String(DEFAULT_WORKSPACE_ID),
+  name: 'DevMind Marketing',
+  slug: 'devmind-marketing',
+  logo: 'DM',
+  plan: 'Pro Enterprise',
+  members: [
+    {
+      id: 'usr-01',
+      name: 'Alex Mercer',
+      email: 'alex.mercer@devmind.com',
+      role: 'Owner',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+      status: 'active',
+    },
+  ],
+};
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
-  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>('ws-devmind');
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([FALLBACK_WORKSPACE]);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>(String(DEFAULT_WORKSPACE_ID));
   const [user] = useState<UserProfile>(DEFAULT_USER);
-  const [accounts, setAccounts] = useState<SocialAccount[]>(INITIAL_MOCK_ACCOUNTS);
-  const [loadingAccounts] = useState<boolean>(false);
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState<boolean>(true);
+  const toast = useToast();
+
+  const refreshAccounts = useCallback(async () => {
+    try {
+      setLoadingAccounts(true);
+      const data = await socialAccountsService.getAccounts(Number(currentWorkspaceId) || DEFAULT_WORKSPACE_ID);
+      setAccounts(data);
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to load social accounts.');
+    } finally {
+      setLoadingAccounts(false);
+    }
+  }, [currentWorkspaceId, toast]);
+
+  const loadWorkspaces = useCallback(async () => {
+    try {
+      const raw = await workspacesApi.getAll();
+      if (raw && raw.length > 0) {
+        const mapped = raw.map(adaptWorkspaceResponseToUi);
+        setWorkspaces(mapped);
+      }
+    } catch {
+      // Keep fallback workspace if fetch fails
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWorkspaces();
+    refreshAccounts();
+  }, [loadWorkspaces, refreshAccounts]);
 
   const currentWorkspace = useMemo(() => {
-    return workspaces.find((w) => w.id === currentWorkspaceId) || workspaces[0];
+    return workspaces.find((w) => w.id === currentWorkspaceId) || workspaces[0] || FALLBACK_WORKSPACE;
   }, [workspaces, currentWorkspaceId]);
 
   const connectedCount = useMemo(() => {
@@ -78,15 +108,70 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const connectAccount = async (platform: SocialPlatform, username: string, displayName?: string) => {
-    const updated = await socialAccountsService.connectAccount(platform, username, displayName);
-    setAccounts((prev) => prev.map((a) => (a.platform === platform ? updated : a)));
-    return updated;
+    try {
+      const wsId = Number(currentWorkspaceId) || DEFAULT_WORKSPACE_ID;
+      const updated = await socialAccountsService.connectAccount(platform, username, displayName, wsId);
+      await refreshAccounts();
+      toast.success('Social account connected.');
+      return updated;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || `Unable to connect ${platform}.`);
+      throw err;
+    }
   };
 
   const disconnectAccount = async (platform: SocialPlatform) => {
-    const updated = await socialAccountsService.disconnectAccount(platform);
-    setAccounts((prev) => prev.map((a) => (a.platform === platform ? updated : a)));
-    return updated;
+    try {
+      const wsId = Number(currentWorkspaceId) || DEFAULT_WORKSPACE_ID;
+      const updated = await socialAccountsService.disconnectAccount(platform, wsId);
+      await refreshAccounts();
+      toast.success('Social account disconnected.');
+      return updated;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || `Unable to disconnect ${platform}.`);
+      throw err;
+    }
+  };
+
+  const updateWorkspace = async (id: string, data: { name?: string; slug?: string; description?: string }) => {
+    try {
+      const numId = parseInt(id, 10);
+      const existing = workspaces.find((w) => w.id === id);
+      const res = await workspacesApi.update(numId, {
+        name: data.name ?? existing?.name ?? '',
+        slug: data.slug ?? existing?.slug ?? '',
+        description: data.description,
+      });
+      const mapped = adaptWorkspaceResponseToUi(res);
+      setWorkspaces((prev) => prev.map((w) => (w.id === id ? mapped : w)));
+      toast.success('Workspace updated successfully.');
+      return mapped;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Failed to update workspace.');
+      throw err;
+    }
+  };
+
+  const createWorkspace = async (data: { name: string; slug: string; description?: string }) => {
+    try {
+      const res = await workspacesApi.create({
+        name: data.name,
+        slug: data.slug,
+        description: data.description || '',
+      });
+      const mapped = adaptWorkspaceResponseToUi(res);
+      setWorkspaces((prev) => [...prev, mapped]);
+      setCurrentWorkspaceId(mapped.id);
+      toast.success('Workspace created successfully.');
+      return mapped;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Failed to create workspace.');
+      throw err;
+    }
   };
 
   return (
@@ -99,8 +184,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         accounts,
         connectedCount,
         loadingAccounts,
+        refreshAccounts,
         connectAccount,
         disconnectAccount,
+        updateWorkspace,
+        createWorkspace,
       }}
     >
       {children}

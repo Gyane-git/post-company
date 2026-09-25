@@ -5,7 +5,7 @@ import { Post } from '@/types/post';
 import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { Button } from '@/components/ui/Button';
-import { Calendar, Clock, Eye, MoreHorizontal } from 'lucide-react';
+import { Calendar, Clock, Eye } from 'lucide-react';
 
 interface CalendarListViewProps {
   posts: Post[];

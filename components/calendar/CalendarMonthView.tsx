@@ -3,7 +3,6 @@
 import React from 'react';
 import { Post } from '@/types/post';
 import { SocialPlatformIcon } from '@/components/common/SocialPlatformIcon';
-import { StatusBadge } from '@/components/common/StatusBadge';
 import { Clock } from 'lucide-react';
 
 interface CalendarMonthViewProps {
@@ -47,10 +46,14 @@ export function CalendarMonthView({
 
   const getPostsForDay = (date: Date | null) => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const targetY = date.getFullYear();
+    const targetM = date.getMonth();
+    const targetD = date.getDate();
     return posts.filter((p) => {
       const targetTime = p.scheduledAt || p.publishedAt || p.createdAt;
-      return targetTime.startsWith(dateStr);
+      if (!targetTime) return false;
+      const d = new Date(targetTime);
+      return d.getFullYear() === targetY && d.getMonth() === targetM && d.getDate() === targetD;
     });
   };
 

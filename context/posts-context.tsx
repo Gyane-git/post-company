@@ -1,9 +1,11 @@
 'use client';
 
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { Post, PostCreateDto } from '@/types/post';
 import { postsService } from '@/services/posts.service';
-import { INITIAL_MOCK_POSTS } from '@/data/mock-posts';
+import { useToast } from '@/context/toast-context';
+import { useWorkspace } from '@/context/workspace-context';
+import { parseApiError } from '@/lib/api/client';
 
 export interface PostStats {
   total: number;
@@ -16,6 +18,7 @@ export interface PostStats {
 export interface PostsContextType {
   posts: Post[];
   loading: boolean;
+  error: string | null;
   stats: PostStats;
   refreshPosts: () => Promise<void>;
   createPost: (dto: PostCreateDto) => Promise<Post>;
@@ -23,43 +26,46 @@ export interface PostsContextType {
   deletePost: (id: string) => Promise<boolean>;
   duplicatePost: (id: string) => Promise<Post>;
   publishPost: (id: string) => Promise<Post>;
+  schedulePost: (id: string, scheduledAt: string) => Promise<Post>;
 }
 
 const PostsContext = createContext<PostsContextType | undefined>(undefined);
 
-// Baseline stats requested in prompt: Total Posts: 128, Published: 96, Scheduled: 21, Failed: 11
-const BASELINE_OFFSET = {
-  published: 93,
-  scheduled: 18,
-  failed: 10,
-  drafts: 0,
-};
-
 export function PostsProvider({ children }: { children: React.ReactNode }) {
-  const [posts, setPosts] = useState<Post[]>(INITIAL_MOCK_POSTS);
-  const [loading, setLoading] = useState<boolean>(false);
+  const { currentWorkspace } = useWorkspace();
+  const workspaceId = Number(currentWorkspace.id) || 1;
 
-  const refreshPosts = async () => {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  const refreshPosts = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await postsService.getPosts();
+      setError(null);
+      const data = await postsService.getPosts(undefined, workspaceId);
       setPosts(data);
-    } catch {
-      // fallback
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    refreshPosts();
+  }, [refreshPosts]);
 
   const stats: PostStats = useMemo(() => {
-    const publishedCount = posts.filter((p) => p.status === 'published').length + BASELINE_OFFSET.published;
-    const scheduledCount = posts.filter((p) => p.status === 'scheduled').length + BASELINE_OFFSET.scheduled;
-    const failedCount = posts.filter((p) => p.status === 'failed').length + BASELINE_OFFSET.failed;
+    const publishedCount = posts.filter((p) => p.status === 'published').length;
+    const scheduledCount = posts.filter((p) => p.status === 'scheduled').length;
+    const failedCount = posts.filter((p) => p.status === 'failed').length;
     const draftsCount = posts.filter((p) => p.status === 'draft').length;
-    const totalCount = publishedCount + scheduledCount + failedCount + draftsCount;
 
     return {
-      total: totalCount,
+      total: posts.length,
       published: publishedCount,
       scheduled: scheduledCount,
       failed: failedCount,
@@ -68,35 +74,89 @@ export function PostsProvider({ children }: { children: React.ReactNode }) {
   }, [posts]);
 
   const createPost = async (dto: PostCreateDto): Promise<Post> => {
-    const newPost = await postsService.createPost(dto);
-    setPosts((prev) => [newPost, ...prev]);
-    return newPost;
+    try {
+      const newPost = await postsService.createPost(dto, workspaceId);
+      await refreshPosts();
+      if (dto.status === 'published') {
+        toast.success('Post published successfully.');
+      } else if (dto.status === 'scheduled') {
+        toast.success('Post scheduled successfully.');
+      } else {
+        toast.success('Post created successfully.');
+      }
+      return newPost;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to create post.');
+      throw err;
+    }
   };
 
   const updatePost = async (id: string, updates: Partial<Post>): Promise<Post> => {
-    const updated = await postsService.updatePost(id, updates);
-    setPosts((prev) => prev.map((p) => (p.id === id ? updated : p)));
-    return updated;
+    try {
+      const updated = await postsService.updatePost(id, updates);
+      await refreshPosts();
+      toast.success('Post updated successfully.');
+      return updated;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to update post.');
+      throw err;
+    }
   };
 
   const deletePost = async (id: string): Promise<boolean> => {
-    const ok = await postsService.deletePost(id);
-    if (ok) {
-      setPosts((prev) => prev.filter((p) => p.id !== id));
+    try {
+      const ok = await postsService.deletePost(id);
+      if (ok) {
+        await refreshPosts();
+        toast.success('Post deleted successfully.');
+      }
+      return ok;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to delete post.');
+      return false;
     }
-    return ok;
   };
 
   const duplicatePost = async (id: string): Promise<Post> => {
-    const dup = await postsService.duplicatePost(id);
-    setPosts((prev) => [dup, ...prev]);
-    return dup;
+    try {
+      const dup = await postsService.duplicatePost(id);
+      await refreshPosts();
+      toast.success('Post duplicated successfully.');
+      return dup;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to duplicate post.');
+      throw err;
+    }
   };
 
   const publishPost = async (id: string): Promise<Post> => {
-    const pub = await postsService.publishPost(id);
-    setPosts((prev) => prev.map((p) => (p.id === id ? pub : p)));
-    return pub;
+    try {
+      const pub = await postsService.publishPost(id);
+      await refreshPosts();
+      toast.success('Post published successfully.');
+      return pub;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to publish post.');
+      throw err;
+    }
+  };
+
+  const schedulePost = async (id: string, scheduledAt: string): Promise<Post> => {
+    try {
+      const scheduled = await postsService.schedulePost(id, scheduledAt);
+      await refreshPosts();
+      toast.success('Post scheduled successfully.');
+      return scheduled;
+    } catch (err) {
+      const errMsg = parseApiError(err);
+      toast.error(errMsg || 'Unable to schedule post.');
+      throw err;
+    }
   };
 
   return (
@@ -104,6 +164,7 @@ export function PostsProvider({ children }: { children: React.ReactNode }) {
       value={{
         posts,
         loading,
+        error,
         stats,
         refreshPosts,
         createPost,
@@ -111,6 +172,7 @@ export function PostsProvider({ children }: { children: React.ReactNode }) {
         deletePost,
         duplicatePost,
         publishPost,
+        schedulePost,
       }}
     >
       {children}

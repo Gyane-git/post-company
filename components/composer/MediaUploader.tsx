@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { PostMedia } from '@/types/post';
-import { UploadCloud, Film, Image as ImageIcon, Trash2, RefreshCw, Play, CheckCircle2 } from 'lucide-react';
+import { UploadCloud, Film, Trash2, RefreshCw, Play } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 interface MediaUploaderProps {
@@ -16,51 +16,61 @@ export function MediaUploader({ media, onMediaChange }: MediaUploaderProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const simulateUpload = (filename: string, sizeBytes: number) => {
+  const processFile = (file: File) => {
     setIsUploading(true);
     setUploadProgress(0);
+
+    const isVideo = file.type.startsWith('video');
+    const localPreviewUrl = URL.createObjectURL(file);
 
     const interval = setInterval(() => {
       setUploadProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
           setIsUploading(false);
-          // Set mock video media
+
           onMediaChange({
-            id: `media-${Date.now()}`,
-            type: 'video',
-            url: 'https://assets.mixkit.co/videos/preview/mixkit-software-developer-working-on-code-42840-large.mp4',
-            thumbnailUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop&q=80',
-            filename: filename || 'marketing-video-4k.mp4',
-            sizeBytes: sizeBytes || 38400000,
-            durationSec: 42,
+            id: `local-${Date.now()}`,
+            type: isVideo ? 'video' : 'image',
+            url: localPreviewUrl,
+            thumbnailUrl: localPreviewUrl,
+            filename: file.name,
+            sizeBytes: file.size,
+            durationSec: isVideo ? 30 : undefined,
             aspectRatio: '16:9',
           });
           return 100;
         }
-        return prev + 25;
+        return prev + 35;
       });
-    }, 180);
+    }, 120);
   };
 
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      simulateUpload(file.name, file.size);
+      processFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      simulateUpload(file.name, file.size);
+      processFile(e.target.files[0]);
     }
   };
 
   const loadSampleVideo = () => {
-    simulateUpload('product-teaser-sample.mp4', 28500000);
+    onMediaChange({
+      id: '2', // Seeded backend Media ID 2
+      type: 'video',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      thumbnailUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800',
+      filename: 'product-launch-teaser.mp4',
+      sizeBytes: 15890200,
+      durationSec: 30,
+      aspectRatio: '16:9',
+    });
   };
 
   return (
@@ -75,7 +85,7 @@ export function MediaUploader({ media, onMediaChange }: MediaUploaderProps) {
             onClick={loadSampleVideo}
             className="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline cursor-pointer"
           >
-            + Use Sample Video
+            + Use Seeded Video Sample
           </button>
         )}
       </div>
@@ -95,9 +105,9 @@ export function MediaUploader({ media, onMediaChange }: MediaUploaderProps) {
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-              Uploading Video... {uploadProgress}%
+              Processing Local Media... {uploadProgress}%
             </p>
-            <p className="text-xs text-slate-400 mt-1">Processing transcoding & multi-aspect previews</p>
+            <p className="text-xs text-slate-400 mt-1">Generating browser preview & metadata</p>
           </div>
           <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden max-w-xs mx-auto">
             <div
@@ -135,7 +145,7 @@ export function MediaUploader({ media, onMediaChange }: MediaUploaderProps) {
                   {media.filename}
                 </p>
                 <p className="text-slate-400 font-mono text-[11px] mt-0.5">
-                  {(media.sizeBytes / (1024 * 1024)).toFixed(1)} MB • {media.aspectRatio || '16:9'} • MP4
+                  {(media.sizeBytes / (1024 * 1024)).toFixed(1)} MB • {media.aspectRatio || '16:9'} • {media.type.toUpperCase()}
                 </p>
               </div>
 
@@ -184,13 +194,17 @@ export function MediaUploader({ media, onMediaChange }: MediaUploaderProps) {
             Drag and drop your marketing video or image here
           </h4>
           <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500 max-w-sm">
-            Supports MP4, MOV, WEBM, PNG, JPG up to 500MB. Auto-optimized for Instagram, Facebook, TikTok, and YouTube.
+            Supports MP4, MOV, WEBM, PNG, JPG. Local browser preview is shown; metadata will be registered with the API.
           </p>
           <div className="mt-4">
-            <Button size="sm" variant="secondary" onClick={(e) => {
-              e.stopPropagation();
-              fileInputRef.current?.click();
-            }}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+            >
               Browse Files
             </Button>
           </div>

@@ -9,6 +9,8 @@ import { CalendarWeekView } from '@/components/calendar/CalendarWeekView';
 import { CalendarListView } from '@/components/calendar/CalendarListView';
 import { ScheduleModal } from '@/components/calendar/ScheduleModal';
 import { PostDetailsModal } from '@/components/posts/PostDetailsModal';
+import { LoadingState } from '@/components/common/LoadingState';
+import { ErrorState } from '@/components/common/ErrorState';
 import { Button } from '@/components/ui/Button';
 import { Post } from '@/types/post';
 import { SocialPlatform } from '@/types/social';
@@ -26,7 +28,7 @@ import {
 } from 'lucide-react';
 
 export default function CalendarPage() {
-  const { posts, stats, createPost, publishPost } = usePosts();
+  const { posts, loading, error, stats, createPost, publishPost, refreshPosts } = usePosts();
 
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 8, 24)); // September 2026 default baseline
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'list'>('month');
@@ -224,34 +226,46 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Calendar Views */}
-      {viewMode === 'month' && (
-        <CalendarMonthView
-          currentDate={currentDate}
-          posts={filteredPosts}
-          onSelectPost={(post) => setSelectedPost(post)}
-          onSelectDate={(date) => {
-            setShowScheduleModal(true);
-          }}
+      {/* Content Rendering: Loading vs Error vs Views */}
+      {loading && posts.length === 0 ? (
+        <LoadingState type="card" count={4} />
+      ) : error && posts.length === 0 ? (
+        <ErrorState
+          title="Unable to load calendar posts"
+          message={error}
+          onRetry={refreshPosts}
         />
-      )}
+      ) : (
+        <>
+          {viewMode === 'month' && (
+            <CalendarMonthView
+              currentDate={currentDate}
+              posts={filteredPosts}
+              onSelectPost={(post) => setSelectedPost(post)}
+              onSelectDate={(_date) => {
+                setShowScheduleModal(true);
+              }}
+            />
+          )}
 
-      {viewMode === 'week' && (
-        <CalendarWeekView
-          currentDate={currentDate}
-          posts={filteredPosts}
-          onSelectPost={(post) => setSelectedPost(post)}
-          onSelectDate={(date) => {
-            setShowScheduleModal(true);
-          }}
-        />
-      )}
+          {viewMode === 'week' && (
+            <CalendarWeekView
+              currentDate={currentDate}
+              posts={filteredPosts}
+              onSelectPost={(post) => setSelectedPost(post)}
+              onSelectDate={(_date) => {
+                setShowScheduleModal(true);
+              }}
+            />
+          )}
 
-      {viewMode === 'list' && (
-        <CalendarListView
-          posts={filteredPosts}
-          onSelectPost={(post) => setSelectedPost(post)}
-        />
+          {viewMode === 'list' && (
+            <CalendarListView
+              posts={filteredPosts}
+              onSelectPost={(post) => setSelectedPost(post)}
+            />
+          )}
+        </>
       )}
 
       {/* Post Details Modal */}

@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/Button';
 import {
   CheckCircle2,
   AlertCircle,
-  ExternalLink,
   Shield,
   Clock,
   Users,
@@ -18,6 +17,7 @@ import {
 
 interface SocialAccountCardProps {
   account: SocialAccount;
+  isLoading?: boolean;
   onConnect: (platform: SocialPlatform) => void;
   onDisconnect: (platform: SocialPlatform) => void;
   onManage: (account: SocialAccount) => void;
@@ -25,6 +25,7 @@ interface SocialAccountCardProps {
 
 export function SocialAccountCard({
   account,
+  isLoading = false,
   onConnect,
   onDisconnect,
   onManage,
@@ -164,6 +165,7 @@ export function SocialAccountCard({
               variant="outline"
               onClick={() => onManage(account)}
               leftIcon={<Settings2 className="w-3.5 h-3.5" />}
+              disabled={isLoading}
             >
               Manage
             </Button>
@@ -173,6 +175,8 @@ export function SocialAccountCard({
               onClick={() => onDisconnect(account.platform)}
               className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
               leftIcon={<Power className="w-3.5 h-3.5" />}
+              isLoading={isLoading}
+              disabled={isLoading}
             >
               Disconnect
             </Button>
@@ -182,6 +186,8 @@ export function SocialAccountCard({
             size="sm"
             variant="primary"
             onClick={() => onConnect(account.platform)}
+            isLoading={isLoading}
+            disabled={isLoading}
           >
             Connect Account
           </Button>
